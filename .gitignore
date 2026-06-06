@@ -1,0 +1,36 @@
+# ==== Standard .gitignore applied to each synced PROJECT repo ====
+# Purpose: sync SOURCE across macOS <-> Windows/ARM, never the non-portable
+# build artifacts or secrets. Reinstall deps per machine.
+
+# Dependencies / build artifacts (rebuild natively on each machine)
+node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.next/
+dist/
+build/
+.cache/
+.parcel-cache/
+
+# Secrets / machine-specific
+.env
+.env.*
+*.key
+*.pem
+.netlify/
+.vercel/
+.supabase/
+settings.local.json
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Large media -> Google Drive, not git (uncomment/extend per project)
+# *.mp4
+# *.mov
+# *.zip
+# assets/video/
