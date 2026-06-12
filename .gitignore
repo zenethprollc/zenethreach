@@ -18,6 +18,9 @@ build/
 # Secrets / machine-specific
 .env
 .env.*
+# ...but DO track the committed templates that document required vars
+!.env.example
+!*.env.example
 *.key
 *.pem
 .netlify/
