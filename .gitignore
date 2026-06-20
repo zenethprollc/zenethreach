@@ -18,6 +18,9 @@ build/
 # Secrets / machine-specific
 .env
 .env.*
+# ...but keep the committed templates (no secrets, just placeholders)
+!.env.example
+!**/.env.example
 *.key
 *.pem
 .netlify/
