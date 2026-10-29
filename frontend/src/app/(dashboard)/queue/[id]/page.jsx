@@ -1,12 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 
-export default function PostDetailPage({ params }) {
-  const { id } = params;
+export default function PostDetailPage() {
+  const { id } = useParams();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [caption, setCaption] = useState('');
