@@ -1,0 +1,103 @@
+# Security auto-fix (Zeneth, added 2026-10-29).
+# Dependabot opens a PR when a vulnerability is published. This job installs,
+# runs the repo's own typecheck, tests and build on that PR, and merges it
+# only if every check passes. A failure leaves the PR open and GitHub emails
+# the owner. Git-linked sites then deploy the merge on their own.
+name: Security auto-fix
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: security-autofix-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        if: hashFiles('**/package.json') != ''
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        if: hashFiles('**/requirements*.txt', '**/pyproject.toml') != ''
+        with:
+          python-version: '3.12'
+
+      - name: Install, typecheck, test, build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ran=0
+          # Every Node project in the repo (root and subfolders).
+          while IFS= read -r pkg; do
+            dir="$(dirname "$pkg")"
+            echo "::group::node $dir"
+            pushd "$dir" >/dev/null
+            if [ -f pnpm-lock.yaml ]; then
+              corepack enable
+              pnpm install --frozen-lockfile
+              runner="pnpm run"
+            elif [ -f yarn.lock ]; then
+              corepack enable
+              yarn install --frozen-lockfile
+              runner="yarn run"
+            elif [ -f package-lock.json ]; then
+              npm ci
+              runner="npm run"
+            else
+              npm install --no-audit --no-fund
+              runner="npm run"
+            fi
+            has() { node -e "const s=require('./package.json').scripts||{};const v=s[process.argv[1]];process.exit(v&&!/no test specified/.test(v)?0:1)" "$1"; }
+            for s in typecheck lint:types test build; do
+              if has "$s"; then
+                echo "running $s in $dir"
+                CI=true $runner "$s"
+                ran=1
+              fi
+            done
+            popd >/dev/null
+            echo "::endgroup::"
+          done < <(find . -name package.json -not -path '*/node_modules/*' -not -path './.git/*' | sort)
+
+          # Every Python project in the repo.
+          while IFS= read -r req; do
+            dir="$(dirname "$req")"
+            echo "::group::python $dir"
+            pushd "$dir" >/dev/null
+            python -m venv .autofix-venv
+            . .autofix-venv/bin/activate
+            pip install --quiet --upgrade pip
+            if [ -f requirements.txt ]; then pip install --quiet -r requirements.txt; fi
+            if [ -f pyproject.toml ] && [ ! -f requirements.txt ]; then pip install --quiet .; fi
+            if [ -d tests ] || [ -d test ] || [ -f pytest.ini ]; then
+              pip install --quiet pytest
+              python -m pytest -q
+            fi
+            python -m compileall -q -x '(\.autofix-venv|node_modules)' .
+            ran=1
+            deactivate
+            rm -rf .autofix-venv
+            popd >/dev/null
+            echo "::endgroup::"
+          done < <(find . \( -name requirements.txt -o -name pyproject.toml \) -not -path '*/node_modules/*' -not -path './.git/*' -exec dirname {} \; | sort -u | sed 's|$|/requirements.txt|')
+
+          echo "checks ran: $ran"
+
+      - name: Merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge "$PR_URL" --squash --delete-branch
